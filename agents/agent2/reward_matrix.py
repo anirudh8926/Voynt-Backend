@@ -146,7 +146,11 @@ def build_eligibility_mask(cards: List[dict], profile: Dict[str, Any]) -> np.nda
     """
     Returns boolean ndarray shape (n_cards,).
     True = card is eligible to be assigned spend.
-    False = card must be excluded from argmax selection.
+
+    When the user has specified cards_owned, ONLY those cards are eligible
+    for spend allocation — this keeps the monthly plan honest.
+    When no cards are owned, fall back to any active card with decent
+    approval odds (first-run / no-card users get a broader recommendation).
     """
     owned = set(profile.get("cards_owned", []) or [])
 
@@ -156,16 +160,12 @@ def build_eligibility_mask(cards: List[dict], profile: Dict[str, Any]) -> np.nda
         approval_prob = float(card.get("approval_prob", 0.0) or 0.0)
         is_active = bool(card.get("is_active", True))
 
-        # (1) Any owned card is always eligible (unless explicitly inactive)
-        if cid in owned and is_active:
-            eligible = True
-        # (2) Any active card with approval_prob >= 0.50 is eligible,
-        #     regardless of credit score range.
-        elif is_active and approval_prob >= 0.50:
-            eligible = True
-        # (3) Inactive cards are hard-excluded.
+        if owned:
+            # Strict mode: only allocate from cards the user actually has
+            eligible = (str(cid) in owned and is_active)
         else:
-            eligible = False
+            # Open mode: no cards specified — use any active card with decent odds
+            eligible = (is_active and approval_prob >= 0.50)
 
         mask[i] = bool(eligible)
 

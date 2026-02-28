@@ -25,7 +25,7 @@ app = FastAPI(title="Voint Backend")
 
 
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-origins = {frontend_url, "http://localhost:5173", "http://localhost:3000"}
+origins = {frontend_url, "http://localhost:5173", "http://localhost:3000", "http://localhost:8000", "http://localhost:5174", "http://localhost:5175"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,7 +52,10 @@ async def analyze(
     as a background task without blocking the request.
     """
     # Agent 1: build UserProfile (without session_id)
-    profile = run_agent1(request)
+    try:
+        profile = run_agent1(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # Insert session row into Supabase
     session_insert = (
@@ -134,8 +137,8 @@ async def get_results(session_id: str) -> ResultsResponse:
     ai_narrative: Optional[str] = None
 
     if strategy_data is not None:
-        strategy = StrategyPlan(**strategy_data)
         ai_narrative = strategy_data.get("ai_narrative")
+        strategy = StrategyPlan.model_validate(strategy_data)
 
         yield_result = YieldResult(
             session_id=session_id,
@@ -179,6 +182,28 @@ async def get_status(session_id: str) -> Dict[str, str]:
     return {"session_id": session_id, "status": session.get("status", "pending")}
 
 
+@app.get("/api/debug/{session_id}")
+async def debug_session(session_id: str) -> JSONResponse:
+    """
+    Raw dump of session + strategy_results for a given session_id.
+    Use this to verify exactly what the pipeline produced without any
+    Pydantic transformation: GET http://localhost:8000/api/debug/<session_id>
+    """
+    session = (
+        supabase.table("sessions")
+        .select("*")
+        .eq("id", session_id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    strategy = get_strategy_result(session_id)
+    return JSONResponse(content={
+        "session": session,
+        "strategy_results": strategy,
+    })
+
+
 @app.get("/api/cards")
 async def cards() -> JSONResponse:
     """
@@ -201,7 +226,7 @@ async def sandbox(request: SandboxRequest) -> SandboxResponse:
 
     ai_strategy: Optional[StrategyPlan] = None
     if strategy_data is not None:
-        ai_strategy = StrategyPlan(**strategy_data)
+        ai_strategy = StrategyPlan.model_validate(strategy_data)
 
     return run_agent6(request, cards, ai_strategy)
 

@@ -34,17 +34,23 @@ def run_agent2(profile: dict, cards: list[dict]) -> StrategyPlan:
     # Step 4: Project across timeline
     monthly_plan = build_monthly_plan(allocations, recommended, cards_list, profile_dict)
 
-    # Step 5: Compute totals
-    total_rewards = sum(float(m.total_expected_value_inr) for m in monthly_plan)
+    # Step 5: Compute totals from the dynamic monthly plan.
+    # monthly totals already incorporate welcome-bonus spikes and annual-fee deductions.
+    # Recover gross rewards by adding back the fee deductions so they can be
+    # reported separately in total_fees_inr.
+    monthly_fee_deducted = sum(
+        sum(-float(a.expected_value_inr) for a in m.allocations if a.category == "annual_fee")
+        for m in monthly_plan
+    )
+    total_plan_net = sum(float(m.total_expected_value_inr) for m in monthly_plan)
+    total_rewards = total_plan_net + monthly_fee_deducted
 
+    # total_fees: full annual_fee charged once per 12-month period
+    timeline_months_int = int(profile_dict.get("timeline_months", 12) or 12)
+    fee_event_count = max(1, timeline_months_int // 12)
     plan_card_ids = allocated_ids | {r.card_id for r in recommended if r.action == "apply"}
-
-    # Prorate annual fees over the plan timeline to avoid charging a full
-    # year of fees for shorter plans.
-    timeline_months = float(profile_dict.get("timeline_months", 12) or 12)
-    proration_factor = timeline_months / 12.0
     total_fees = sum(
-        float(c.get("annual_fee_inr", 0.0) or 0.0) * proration_factor
+        float(c.get("annual_fee_inr", 0.0) or 0.0) * fee_event_count
         for c in cards_list
         if str(c.get("id")) in plan_card_ids
     )

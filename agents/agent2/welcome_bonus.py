@@ -8,10 +8,12 @@ from models import RecommendedCard
 def credit_floor(profile: Dict[str, Any]) -> float:
     credit_range = str(profile.get("credit_score_range", "") or "")
     credit_floor_map = {
-        "600-650": 0.40,
-        "650-700": 0.55,
-        "700-750": 0.65,
-        "750+": 0.75,
+        "600-650":  0.40,
+        "650-700":  0.55,
+        "700-750":  0.65,
+        "750+":     0.75,
+        "750-800":  0.75,
+        "800+":     0.85,
     }
     return float(credit_floor_map.get(credit_range, 0.60))
 
@@ -105,8 +107,8 @@ def evaluate_welcome_bonuses(
                 RecommendedCard(
                     card_id=cid,
                     card_name=str(card.get("name", "")),
-                    action="activate",
-                    reason="Not currently used but has strong rewards",
+                    action="use",
+                    reason="You own this card but it's not in your current plan — route spend here",
                     approval_prob=float(card.get("approval_prob", 0.0) or 0.0),
                     expected_bonus_value_inr=0.0,
                 )

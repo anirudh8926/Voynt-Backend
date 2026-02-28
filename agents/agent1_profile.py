@@ -20,14 +20,18 @@ def run_agent1(request: AnalyzeRequest) -> UserProfile:
     if request.cards_owned:
         result = (
             supabase.table("cards")
-            .select("id")
-            .in_("id", request.cards_owned)
+            .select("id, name")
+            .in_("name", request.cards_owned)
             .execute()
         )
-        existing_ids = {row["id"] for row in cast(list[dict], result.data or [])}
-        missing = set(request.cards_owned) - existing_ids
-        if missing:
-            raise ValueError(f"Unknown card IDs: {', '.join(sorted(missing))}")
+        rows = cast(list[dict], result.data or [])
+        if not rows:
+            raise ValueError(
+                "None of the selected cards were recognised. "
+                "Please select at least one valid card and try again."
+            )
+        # Replace incoming name strings with the resolved UUIDs (drop unknowns silently)
+        request.cards_owned = [row["id"] for row in rows]
 
     spend_sum = sum(
         [
@@ -41,18 +45,26 @@ def run_agent1(request: AnalyzeRequest) -> UserProfile:
             request.spend_breakdown.other,
         ]
     )
-    if spend_sum > request.monthly_spend_inr:
-        raise ValueError("Sum of spend_breakdown exceeds monthly_spend_inr")
+    if spend_sum > request.monthly_spend_inr and spend_sum > 0:
+        scale = request.monthly_spend_inr / spend_sum
+        request.spend_breakdown.groceries     = round(request.spend_breakdown.groceries     * scale)
+        request.spend_breakdown.dining        = round(request.spend_breakdown.dining        * scale)
+        request.spend_breakdown.travel        = round(request.spend_breakdown.travel        * scale)
+        request.spend_breakdown.fuel          = round(request.spend_breakdown.fuel          * scale)
+        request.spend_breakdown.online        = round(request.spend_breakdown.online        * scale)
+        request.spend_breakdown.entertainment = round(request.spend_breakdown.entertainment * scale)
+        request.spend_breakdown.utilities     = round(request.spend_breakdown.utilities     * scale)
+        request.spend_breakdown.other         = round(request.spend_breakdown.other         * scale)
 
     spend_dict = {
-        "groceries": request.spend_breakdown.groceries,
-        "dining": request.spend_breakdown.dining,
-        "travel": request.spend_breakdown.travel,
-        "fuel": request.spend_breakdown.fuel,
-        "online": request.spend_breakdown.online,
+        "groceries":     request.spend_breakdown.groceries,
+        "dining":        request.spend_breakdown.dining,
+        "travel":        request.spend_breakdown.travel,
+        "fuel":          request.spend_breakdown.fuel,
+        "online":        request.spend_breakdown.online,
         "entertainment": request.spend_breakdown.entertainment,
-        "utilities": request.spend_breakdown.utilities,
-        "other": request.spend_breakdown.other,
+        "utilities":     request.spend_breakdown.utilities,
+        "other":         request.spend_breakdown.other,
     }
 
     return UserProfile(
