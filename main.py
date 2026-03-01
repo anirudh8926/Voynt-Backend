@@ -25,7 +25,7 @@ app = FastAPI(title="Voint Backend")
 
 
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-origins = {frontend_url, "http://localhost:5173", "http://localhost:3000", "http://localhost:8000", "http://localhost:5174", "http://localhost:5175"}
+origins = {frontend_url, "http://localhost:5173", "http://localhost:3000", "http://localhost:8000", "http://localhost:5174", "http://localhost:5175, "https://voynt-final.vercel.app/"}
 
 app.add_middleware(
     CORSMiddleware,
