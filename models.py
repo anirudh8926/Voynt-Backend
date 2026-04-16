@@ -73,6 +73,13 @@ class RecommendedCard(BaseModel):
     expected_bonus_value_inr: float = 0
 
 
+class MCResult(BaseModel):
+    expected_net_value: float
+    p10_net_value: float
+    p90_net_value: float
+    card_win_rate: dict[str, float]
+
+
 class StrategyPlan(BaseModel):
     session_id: str
     monthly_plan: list[MonthPlan]
@@ -80,6 +87,7 @@ class StrategyPlan(BaseModel):
     total_rewards_inr: float
     total_fees_inr: float
     net_value_inr: float
+    mc_result: MCResult | None = None
 
 
 class YieldResult(BaseModel):
