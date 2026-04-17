@@ -204,6 +204,117 @@ async def debug_session(session_id: str) -> JSONResponse:
     })
 
 
+@app.get("/api/graph/{session_id}")
+@app.get("/api/graph/{session_id}")
+async def get_strategy_graph(session_id: str) -> JSONResponse:
+    """
+    Build a rigidly mapped PyVis-compatible graph mapping cards sequentially across time.
+    X-axis: Time (Month progression fixed per 250px)
+    Y-axis: Dedicated Card 'Swimlanes'
+    """
+    strategy_data = get_strategy_result(session_id)
+    if strategy_data is None:
+        raise HTTPException(status_code=404, detail="Strategy result not found")
+
+    monthly_plan = strategy_data.get("monthly_plan") or []
+
+    # Get totals to find best card & assign Y coordinates
+    card_totals: dict[str, dict] = {}
+    for month_data in monthly_plan:
+        for alloc in (month_data.get("allocations") or []):
+            cid = alloc.get("card_id", "")
+            if cid not in card_totals:
+                card_totals[cid] = {"name": alloc.get("card_name", "Card"), "total_value": 0.0}
+            if alloc.get("category") != "annual_fee":
+                card_totals[cid]["total_value"] += float(alloc.get("expected_value_inr") or 0.0)
+
+    # Assign Y coordinates arbitrarily since we are removing 'best' grouping
+    unique_cids = list(card_totals.keys())
+    
+    y_map = {}
+    y_offsets = [0, 150, -150, 300, -300, 450, -450]
+    for idx, cid in enumerate(unique_cids):
+        y_map[cid] = y_offsets[idx % len(y_offsets)]
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    # Center Goal Node (Start Point)
+    center_id = "goal"
+    nodes.append({
+        "id": center_id, 
+        "label": "Start Phase", 
+        "group": "goal", 
+        "size": 24, 
+        "is_optimal": True,
+        "x": -200, 
+        "y": 0, 
+        "fixed": {"x": True, "y": True}
+    })
+    
+    last_card_node = {} # Track the last chronological node for each card
+
+    for idx, month_data in enumerate(monthly_plan):
+        m_num = month_data.get("month", idx + 1)
+        x_coord = m_num * 320
+        
+        allocs_by_card = {}
+        for alloc in (month_data.get("allocations") or []):
+            cid = alloc.get("card_id", "")
+            if cid not in allocs_by_card:
+                allocs_by_card[cid] = []
+            allocs_by_card[cid].append(alloc)
+            
+        for cid, allocs in allocs_by_card.items():
+            cname = card_totals.get(cid, {}).get("name", "Card")
+            y_coord = y_map.get(cid, 0)
+            
+            node_id = f"m{m_num}_c{cid}"
+            
+            nodes.append({
+                "id": node_id,
+                "label": f"M{m_num}: {cname[:14]}",
+                "group": "card",
+                "size": 16,
+                "is_optimal": False,
+                "x": x_coord, 
+                "y": y_coord, 
+                "fixed": {"x": True, "y": True},
+                "title": f"{cname} used in Month {m_num}"
+            })
+            
+            # Connect edge from previous
+            prev_node = last_card_node.get(cid, center_id)
+            
+            val_sum = sum([float(a.get("expected_value_inr") or 0.0) for a in allocs if a.get("category") != "annual_fee"])
+            cats = [a.get("category") for a in allocs if a.get("category") != "annual_fee"]
+            fees = [float(a.get("amount_inr") or 0.0) for a in allocs if a.get("category") == "annual_fee"]
+            
+            if fees:
+                edge_label = f"Fee (₹{sum(fees):,.0f})"
+                dashes = True
+            else:
+                cat_str = ", ".join([c.capitalize() for c in set(cats)])
+                if len(cat_str) > 18: 
+                    cat_str = cat_str[:15] + ".."
+                edge_label = f"₹{val_sum:,.0f} ({cat_str})"
+                dashes = False
+                
+            edges.append({
+                "from": prev_node,
+                "to": node_id,
+                "label": edge_label,
+                "is_optimal": False,
+                "width": 1,
+                "dashes": dashes,
+                "arrows": {"to": {"enabled": True, "scaleFactor": 0.4}},
+            })
+            
+            last_card_node[cid] = node_id
+
+    return JSONResponse(content={"nodes": nodes, "edges": edges, "best_card_id": None})
+
+
 @app.get("/api/cards")
 async def cards() -> JSONResponse:
     """
