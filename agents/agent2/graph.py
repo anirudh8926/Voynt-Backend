@@ -373,11 +373,16 @@ def _expand_month(
     candidates.append(_advance(spent_state, {"month": cur_month, "action": "WAIT"}))
 
     # ── Candidate 2+: apply one new card, then spend, then advance ──────────
-    eligible_to_apply = [
-        cm for cm in card_models
-        if cm.id not in state.cards_held
-        and cm.id not in owned_at_start  # don't "apply" for already-owned cards
-    ]
+    risk_level = str(profile.get("risk_level", "moderate")).lower()
+    
+    if risk_level == "aggressive" or not owned_at_start:
+        eligible_to_apply = [
+            cm for cm in card_models
+            if cm.id not in state.cards_held
+            and cm.id not in owned_at_start  # don't "apply" for already-owned cards
+        ]
+    else:
+        eligible_to_apply = []
     for cm in eligible_to_apply:
         new_held = state.cards_held | frozenset([cm.id])
         # Apply action: pay fee immediately at month 1 for this card
